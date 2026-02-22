@@ -8,7 +8,7 @@ import (
 )
 
 // version is the current release of grim-cli. Bump this before each release.
-const version = "0.1.0"
+const version = "0.2.0"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
