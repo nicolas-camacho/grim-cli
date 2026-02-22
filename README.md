@@ -72,6 +72,16 @@ go build -o $HOME/go/bin/grim.exe .
 
 ## Usage
 
+### Shortcuts
+
+Most commands have a short alias:
+
+| Alias | Command |
+|---|---|
+| `grim a` | `grim add` |
+| `grim ls` | `grim list` |
+| `grim rd` | `grim read` |
+
 ### Add a book
 
 Launches an interactive form that asks for the book details sequentially.

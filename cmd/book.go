@@ -16,8 +16,9 @@ import (
 // bookAddCmd launches an interactive huh form that collects book details
 // sequentially and persists the new entry via the store.
 var bookAddCmd = &cobra.Command{
-	Use:   "add",
-	Short: "Add a book to your reading list",
+	Use:     "add",
+	Aliases: []string{"a"},
+	Short:   "Add a book to your reading list",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var title, pageStr, totalPagesStr string
 		var readToday bool
@@ -114,8 +115,9 @@ func repeatStr(s string, n int) string {
 // bookListCmd loads all books from the store and renders them in a styled table.
 // The "Read Today" column is evaluated live so it resets at midnight automatically.
 var bookListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List all books and their status",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List all books and their status",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := store.New()
 		if err != nil {
@@ -255,8 +257,9 @@ var bookDeleteCmd = &cobra.Command{
 // a selector to pick a book, then asks for the page they stopped at.
 // The store shifts CurrentPage → PreviousPage and records today's date.
 var bookReadCmd = &cobra.Command{
-	Use:   "read",
-	Short: "Log today's reading session for a book",
+	Use:     "read",
+	Aliases: []string{"rd"},
+	Short:   "Log today's reading session for a book",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := store.New()
 		if err != nil {
