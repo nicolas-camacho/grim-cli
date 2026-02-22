@@ -93,6 +93,35 @@ grim del
 grim version
 ```
 
+## Running tests
+
+Run all tests across every package:
+
+```bash
+go test ./...
+```
+
+Run with verbose output to see each test case individually:
+
+```bash
+go test ./... -v
+```
+
+Run only a specific package:
+
+```bash
+go test ./store/...
+go test ./cmd/...
+```
+
+Run a single test by name:
+
+```bash
+go test ./store/... -run TestDeleteBook_RemovesCorrectBook
+```
+
+Tests are fully isolated — they use temporary directories and never touch `~/.grim`.
+
 ## Data storage
 
 All data is stored in a single JSON file:
