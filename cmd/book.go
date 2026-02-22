@@ -165,14 +165,18 @@ var bookListCmd = &cobra.Command{
 			BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("#A673FF"))).
 			Headers(headers...).
 			StyleFunc(func(row, col int) lipgloss.Style {
+				base := lipgloss.NewStyle()
+				if col == 0 {
+					base = base.PaddingLeft(2).PaddingRight(2)
+				}
 				if row == table.HeaderRow {
-					return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#A673FF"))
+					return base.Bold(true).Foreground(lipgloss.Color("#A673FF"))
 				}
 				// Alternate row shading for readability.
 				if row%2 == 0 {
-					return lipgloss.NewStyle().Foreground(lipgloss.Color("#E5E7EB"))
+					return base.Foreground(lipgloss.Color("#E5E7EB"))
 				}
-				return lipgloss.NewStyle()
+				return base
 			}).
 			Rows(rows...)
 
@@ -248,8 +252,94 @@ var bookDeleteCmd = &cobra.Command{
 	},
 }
 
+// bookReadCmd lets the user mark a reading session for today. It presents
+// a selector to pick a book, then asks for the page they stopped at.
+// The store shifts CurrentPage → PreviousPage and records today's date.
+var bookReadCmd = &cobra.Command{
+	Use:   "read",
+	Short: "Log today's reading session for a book",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		s, err := store.New()
+		if err != nil {
+			return err
+		}
+
+		if len(s.Books) == 0 {
+			fmt.Println(ui.Muted.Render("No books yet. Add one with: grim add"))
+			return nil
+		}
+
+		options := make([]huh.Option[string], len(s.Books))
+		for i, b := range s.Books {
+			options[i] = huh.NewOption(b.Title, b.Title)
+		}
+
+		var selected, pageStr string
+
+		selectForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewSelect[string]().
+					Title("Which book did you read today?").
+					Options(options...).
+					Value(&selected),
+			),
+		)
+
+		if err := selectForm.Run(); err != nil {
+			return err
+		}
+
+		pageForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("What page did you finish on?").
+					Placeholder("0").
+					Validate(func(s string) error {
+						if _, err := strconv.Atoi(s); err != nil {
+							return fmt.Errorf("must be a number")
+						}
+						return nil
+					}).
+					Value(&pageStr),
+			),
+		)
+
+		if err := pageForm.Run(); err != nil {
+			return err
+		}
+
+		newPage, _ := strconv.Atoi(pageStr)
+
+		if err := s.UpdateBook(selected, newPage); err != nil {
+			return err
+		}
+
+		// Find the updated book to show session info in the confirmation.
+		var updated store.Book
+		for _, b := range s.Books {
+			if b.Title == selected {
+				updated = b
+				break
+			}
+		}
+
+		pagesRead := newPage - updated.PreviousPage
+
+		fmt.Println(ui.Box.Render(
+			ui.Title.Render("Session logged") + "\n\n" +
+				ui.Bold.Render("Title:       ") + selected + "\n" +
+				ui.Bold.Render("Session:     ") + fmt.Sprintf("%d → %d", updated.PreviousPage, newPage) + "\n" +
+				ui.Bold.Render("Pages read:  ") + ui.Success.Render(fmt.Sprintf("%d", pagesRead)) + "\n" +
+				ui.Bold.Render("Progress:    ") + progressBar(newPage, updated.TotalPages),
+		))
+
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(bookAddCmd)
 	rootCmd.AddCommand(bookListCmd)
 	rootCmd.AddCommand(bookDeleteCmd)
+	rootCmd.AddCommand(bookReadCmd)
 }

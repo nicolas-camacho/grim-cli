@@ -99,6 +99,21 @@ func (s *Store) AddBook(title string, page, totalPages int, readToday bool) erro
 	return s.save()
 }
 
+// UpdateBook marks a book as read today, shifting CurrentPage to PreviousPage
+// and setting the new page as CurrentPage. LastReadDate is set to today.
+func (s *Store) UpdateBook(title string, newPage int) error {
+	for i, b := range s.Books {
+		if b.Title == title {
+			s.Books[i].PreviousPage = b.CurrentPage
+			s.Books[i].CurrentPage = newPage
+			s.Books[i].LastReadDate = time.Now().Format("2006-01-02")
+			s.Books[i].ReadToday = true
+			return s.save()
+		}
+	}
+	return nil
+}
+
 // DeleteBook removes the first book whose title matches and persists the change.
 // It is a no-op if no match is found.
 func (s *Store) DeleteBook(title string) error {

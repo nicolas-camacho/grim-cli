@@ -15,15 +15,33 @@ A terminal reading tracker built with Go and the [Charm](https://charm.sh) suite
 
 ## Installation
 
-Clone the repository and install the binary:
+Clone the repository and build the binary:
 
 ```bash
-git clone https://github.com/nicolas/grim-cli
+git clone https://github.com/nicolas-camacho/grim-cli
 cd grim-cli
-go build -o ~/go/bin/grim.exe .
 ```
 
-Make sure `~/go/bin` is in your `PATH`. You can verify with:
+Then install it depending on your shell:
+
+**PowerShell**
+```powershell
+go build -o $HOME\go\bin\grim.exe .
+```
+
+**CMD**
+```cmd
+go build -o %USERPROFILE%\go\bin\grim.exe .
+```
+
+**Git Bash**
+```bash
+go build -o $HOME/go/bin/grim.exe .
+```
+
+> **Note:** Avoid using `~` in the output path on Windows — it is not expanded automatically outside of Git Bash and will create a literal `~` folder inside your project directory.
+
+Make sure `%USERPROFILE%\go\bin` is in your `PATH`. You can verify with:
 
 ```bash
 grim --help
@@ -31,11 +49,24 @@ grim --help
 
 ## Updating
 
-After pulling new changes, rebuild and reinstall with the same command:
+After pulling new changes, rebuild and reinstall using the same command for your shell:
 
+**PowerShell**
+```powershell
+git pull
+go build -o $HOME\go\bin\grim.exe .
+```
+
+**CMD**
+```cmd
+git pull
+go build -o %USERPROFILE%\go\bin\grim.exe .
+```
+
+**Git Bash**
 ```bash
 git pull
-go build -o ~/go/bin/grim.exe .
+go build -o $HOME/go/bin/grim.exe .
 ```
 
 ## Usage
@@ -78,6 +109,23 @@ The table includes:
 | Read Today | Whether the book was read today |
 
 The **Read Today** status is computed at runtime by comparing the stored date against today's date, so it resets automatically at midnight without modifying any data.
+
+### Log a reading session
+
+Lets you pick a book from your list and record the page you finished on today. The previous page and current page are updated automatically, and the book is marked as read today.
+
+```bash
+grim read
+```
+
+You will be prompted for:
+
+| Step | Description |
+|---|---|
+| Which book did you read today? | Select a book from the list |
+| What page did you finish on? | The page you stopped at |
+
+After confirming, a summary is shown with the session range, pages read, and updated progress bar.
 
 ### Delete a book
 
