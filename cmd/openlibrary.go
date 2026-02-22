@@ -30,19 +30,18 @@ type olRatingResponse struct {
 	} `json:"summary"`
 }
 
-// BookInfo holds the enriched metadata returned by Open Library.
-type BookInfo struct {
-	Author        string
-	PublishYear   int
-	RatingAverage float64
-	RatingCount   int
+// BookMeta holds the Open Library metadata returned by fetchBookMeta.
+type BookMeta struct {
+	WorkKey     string
+	Author      string
+	PublishYear int
 }
 
 var olClient = &http.Client{Timeout: 8 * time.Second}
 
-// fetchBookInfo queries the Open Library search API with the given title,
-// then fetches the work's rating in a second call.
-func fetchBookInfo(title string) (*BookInfo, error) {
+// fetchBookMeta queries the Open Library search API and returns the work key,
+// author, and publish year for the best matching result.
+func fetchBookMeta(title string) (*BookMeta, error) {
 	searchURL := "https://openlibrary.org/search.json?limit=1&language=eng&title=" + url.QueryEscape(title)
 
 	resp, err := olClient.Get(searchURL)
@@ -65,35 +64,47 @@ func fetchBookInfo(title string) (*BookInfo, error) {
 	}
 
 	doc := result.Docs[0]
-
-	info := &BookInfo{PublishYear: doc.FirstPublishYear}
+	meta := &BookMeta{
+		WorkKey:     doc.Key,
+		PublishYear: doc.FirstPublishYear,
+	}
 	if len(doc.AuthorName) > 0 {
-		info.Author = doc.AuthorName[0]
+		meta.Author = doc.AuthorName[0]
 	}
 
-	// Second call: fetch rating using the work key.
-	if doc.Key != "" {
-		ratingURL := "https://openlibrary.org" + doc.Key + "/ratings.json"
-		rResp, err := olClient.Get(ratingURL)
-		if err == nil && rResp.StatusCode == http.StatusOK {
-			var rating olRatingResponse
-			if json.NewDecoder(rResp.Body).Decode(&rating) == nil {
-				info.RatingAverage = rating.Summary.Average
-				info.RatingCount = rating.Summary.Count
-			}
-			rResp.Body.Close()
-		}
-	}
-
-	return info, nil
+	return meta, nil
 }
 
-// starRating renders a 5-star string from a 0–5 average, e.g. "★★★★☆ 4.2 (1 234 ratings)".
+// fetchRating fetches the rating for a work key (e.g. "/works/OL45804W").
+// Returns 0, 0 without error when the work has no ratings yet.
+func fetchRating(workKey string) (average float64, count int, err error) {
+	ratingURL := "https://openlibrary.org" + workKey + "/ratings.json"
+
+	resp, err := olClient.Get(ratingURL)
+	if err != nil {
+		return 0, 0, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, 0, fmt.Errorf("unexpected status %d", resp.StatusCode)
+	}
+
+	var rating olRatingResponse
+	if err := json.NewDecoder(resp.Body).Decode(&rating); err != nil {
+		return 0, 0, fmt.Errorf("decode error: %w", err)
+	}
+
+	return rating.Summary.Average, rating.Summary.Count, nil
+}
+
+// starRating renders a 5-star string from a 0–5 average.
+// e.g. "★★★★☆ 4.2 (1 234 ratings)"
 func starRating(average float64, count int) string {
 	if count == 0 {
 		return "no ratings yet"
 	}
-	full := int(average + 0.5) // round to nearest star
+	full := int(average + 0.5)
 	bar := ""
 	for i := 0; i < 5; i++ {
 		if i < full {
@@ -105,7 +116,7 @@ func starRating(average float64, count int) string {
 	return fmt.Sprintf("%s %.1f (%s ratings)", bar, average, formatCount(count))
 }
 
-// formatCount formats an integer with a thin space as thousands separator.
+// formatCount formats an integer with spaces as thousands separators.
 func formatCount(n int) string {
 	s := fmt.Sprintf("%d", n)
 	out := ""

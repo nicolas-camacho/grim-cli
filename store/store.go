@@ -19,6 +19,11 @@ type Book struct {
 	ReadToday    bool      `json:"read_today"`
 	LastReadDate string    `json:"last_read_date"` // format: "2006-01-02"
 	AddedAt      time.Time `json:"added_at"`
+
+	// Open Library metadata — populated on first `grim dt` call.
+	WorkKey     string `json:"work_key,omitempty"`     // e.g. "/works/OL45804W"
+	Author      string `json:"author,omitempty"`
+	PublishYear int    `json:"publish_year,omitempty"`
 }
 
 // WasReadToday returns true if the book's LastReadDate matches today's date.
@@ -108,6 +113,20 @@ func (s *Store) UpdateBook(title string, newPage int) error {
 			s.Books[i].CurrentPage = newPage
 			s.Books[i].LastReadDate = time.Now().Format("2006-01-02")
 			s.Books[i].ReadToday = true
+			return s.save()
+		}
+	}
+	return nil
+}
+
+// UpdateBookMeta stores the Open Library metadata for a book and persists the change.
+// It is a no-op if no book with the given title is found.
+func (s *Store) UpdateBookMeta(title, workKey, author string, publishYear int) error {
+	for i, b := range s.Books {
+		if b.Title == title {
+			s.Books[i].WorkKey = workKey
+			s.Books[i].Author = author
+			s.Books[i].PublishYear = publishYear
 			return s.save()
 		}
 	}

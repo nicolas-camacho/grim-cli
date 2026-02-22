@@ -400,30 +400,51 @@ var bookDetailCmd = &cobra.Command{
 
 		addedAt := book.AddedAt.Format("2006-01-02")
 
-		// Fetch remote metadata from Open Library
-		fmt.Print(ui.Muted.Render("Fetching book info from Open Library..."))
-		info, fetchErr := fetchBookInfo(book.Title)
-		fmt.Print("\r\033[K") // clear the loading line
+		// Fetch remote metadata from Open Library.
+		// If the work key is already stored, skip the search and only fetch the rating.
+		author := book.Author
+		publishYear := book.PublishYear
+		workKey := book.WorkKey
+
+		if workKey == "" {
+			fmt.Print(ui.Muted.Render("Fetching book info from Open Library..."))
+			meta, metaErr := fetchBookMeta(book.Title)
+			fmt.Print("\r\033[K") // clear the loading line
+			if metaErr == nil {
+				workKey = meta.WorkKey
+				author = meta.Author
+				publishYear = meta.PublishYear
+				// Persist so future calls skip the search entirely.
+				_ = s.UpdateBookMeta(book.Title, workKey, author, publishYear)
+			}
+		}
+
+		// Fetch the rating using the work key (always live, not cached).
+		var ratingAvg float64
+		var ratingCount int
+		if workKey != "" {
+			ratingAvg, ratingCount, _ = fetchRating(workKey)
+		}
 
 		// Build the remote metadata section
 		var remoteSection string
-		if fetchErr != nil {
+		if workKey == "" && author == "" {
 			remoteSection = "\n" + ui.Muted.Render("Open Library: no results found") + "\n"
 		} else {
-			publishYear := ui.Muted.Render("unknown")
-			if info.PublishYear > 0 {
-				publishYear = fmt.Sprintf("%d", info.PublishYear)
+			publishYearStr := ui.Muted.Render("unknown")
+			if publishYear > 0 {
+				publishYearStr = fmt.Sprintf("%d", publishYear)
 			}
-			author := ui.Muted.Render("unknown")
-			if info.Author != "" {
-				author = info.Author
+			authorStr := ui.Muted.Render("unknown")
+			if author != "" {
+				authorStr = author
 			}
 
 			remoteSection = "\n" +
 				ui.Subtitle.Render("── Open Library ──") + "\n" +
-				ui.Bold.Render("Author:       ") + author + "\n" +
-				ui.Bold.Render("Published:    ") + publishYear + "\n" +
-				ui.Bold.Render("Rating:       ") + starRating(info.RatingAverage, info.RatingCount) + "\n"
+				ui.Bold.Render("Author:       ") + authorStr + "\n" +
+				ui.Bold.Render("Published:    ") + publishYearStr + "\n" +
+				ui.Bold.Render("Rating:       ") + starRating(ratingAvg, ratingCount) + "\n"
 		}
 
 		fmt.Println(ui.Box.Render(
