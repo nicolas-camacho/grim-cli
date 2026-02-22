@@ -337,9 +337,116 @@ var bookReadCmd = &cobra.Command{
 	},
 }
 
+// bookDetailCmd shows a book selector, fetches enriched metadata from Open
+// Library, and renders a combined local + remote detail panel.
+var bookDetailCmd = &cobra.Command{
+	Use:   "dt",
+	Short: "Show detailed information for a book",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		s, err := store.New()
+		if err != nil {
+			return err
+		}
+
+		if len(s.Books) == 0 {
+			fmt.Println(ui.Muted.Render("No books yet. Add one with: grim add"))
+			return nil
+		}
+
+		options := make([]huh.Option[string], len(s.Books))
+		for i, b := range s.Books {
+			options[i] = huh.NewOption(b.Title, b.Title)
+		}
+
+		var selected string
+		selectForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewSelect[string]().
+					Title("Which book do you want to inspect?").
+					Options(options...).
+					Value(&selected),
+			),
+		)
+
+		if err := selectForm.Run(); err != nil {
+			return err
+		}
+
+		var book store.Book
+		for _, b := range s.Books {
+			if b.Title == selected {
+				book = b
+				break
+			}
+		}
+
+		// Local reading stats
+		readStatus := ui.Danger.Render("✗ not yet")
+		if book.WasReadToday() {
+			readStatus = ui.Success.Render("✓ yes")
+		}
+
+		lastRead := ui.Muted.Render("never")
+		if book.LastReadDate != "" {
+			lastRead = book.LastReadDate
+		}
+
+		session := ui.Muted.Render("—")
+		pagesRead := ui.Muted.Render("—")
+		if book.LastReadDate != "" {
+			session = fmt.Sprintf("%d → %d", book.PreviousPage, book.CurrentPage)
+			pagesRead = ui.Success.Render(fmt.Sprintf("+%d", book.CurrentPage-book.PreviousPage))
+		}
+
+		addedAt := book.AddedAt.Format("2006-01-02")
+
+		// Fetch remote metadata from Open Library
+		fmt.Print(ui.Muted.Render("Fetching book info from Open Library..."))
+		info, fetchErr := fetchBookInfo(book.Title)
+		fmt.Print("\r\033[K") // clear the loading line
+
+		// Build the remote metadata section
+		var remoteSection string
+		if fetchErr != nil {
+			remoteSection = "\n" + ui.Muted.Render("Open Library: no results found") + "\n"
+		} else {
+			publishYear := ui.Muted.Render("unknown")
+			if info.PublishYear > 0 {
+				publishYear = fmt.Sprintf("%d", info.PublishYear)
+			}
+			author := ui.Muted.Render("unknown")
+			if info.Author != "" {
+				author = info.Author
+			}
+
+			remoteSection = "\n" +
+				ui.Subtitle.Render("── Open Library ──") + "\n" +
+				ui.Bold.Render("Author:       ") + author + "\n" +
+				ui.Bold.Render("Published:    ") + publishYear + "\n" +
+				ui.Bold.Render("Rating:       ") + starRating(info.RatingAverage, info.RatingCount) + "\n"
+		}
+
+		fmt.Println(ui.Box.Render(
+			ui.Title.Render("Book Details")+"\n\n"+
+				ui.Bold.Render("Title:        ")+book.Title+"\n"+
+				ui.Bold.Render("Current page: ")+fmt.Sprintf("%d / %d", book.CurrentPage, book.TotalPages)+"\n"+
+				ui.Bold.Render("Progress:     ")+progressBar(book.CurrentPage, book.TotalPages)+"\n"+
+				ui.Bold.Render("Last session: ")+session+"\n"+
+				ui.Bold.Render("Pages read:   ")+pagesRead+"\n"+
+				ui.Bold.Render("Last read:    ")+lastRead+"\n"+
+				ui.Bold.Render("Added on:     ")+addedAt+"\n"+
+				ui.Bold.Render("Read today:   ")+readStatus+
+				remoteSection,
+		))
+
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(bookAddCmd)
 	rootCmd.AddCommand(bookListCmd)
 	rootCmd.AddCommand(bookDeleteCmd)
 	rootCmd.AddCommand(bookReadCmd)
+	rootCmd.AddCommand(bookDetailCmd)
 }

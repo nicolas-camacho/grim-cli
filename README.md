@@ -6,6 +6,7 @@ A terminal reading tracker built with Go and the [Charm](https://charm.sh) suite
 
 - Add books with title, total pages, current page, and daily reading status
 - List all books in a styled table with a live reading progress bar
+- View detailed information for a book, enriched with author, publish year, and rating from Open Library
 - Delete books interactively
 - Data persists locally in `~/.grim/books.json`
 
@@ -127,6 +128,32 @@ You will be prompted for:
 
 After confirming, a summary is shown with the session range, pages read, and updated progress bar.
 
+### View book details
+
+Shows a detailed panel for a selected book. Local reading stats are combined with live metadata fetched from the [Open Library](https://openlibrary.org/) API.
+
+```bash
+grim dt
+```
+
+You will be prompted to select a book from your list. The detail panel includes:
+
+| Field | Description |
+|---|---|
+| Title | Name of the book |
+| Current page | Current page out of total pages |
+| Progress | Visual progress bar and percentage |
+| Last session | Page range of the last reading session (e.g. `95 → 120`) |
+| Pages read | Pages read in the last session |
+| Last read | Date the book was last read |
+| Added on | Date the book was added to the list |
+| Read today | Whether the book was read today |
+| Author | Author name from Open Library |
+| Published | Year of first publication from Open Library |
+| Rating | Star rating and total count from Open Library |
+
+> **Note:** The Open Library lookup requires an internet connection. If no match is found, local data is still displayed normally.
+
 ### Delete a book
 
 Launches an interactive selector to pick a book, then asks for confirmation before deleting.
@@ -187,8 +214,9 @@ grim-cli/
 ├── main.go          # Entry point — calls cmd.Execute()
 ├── cmd/
 │   ├── root.go      # Root Cobra command and Execute() function
-│   ├── book.go      # add, list, and del commands
-│   └── version.go   # version command
+│   ├── book.go        # add, list, del, read, and dt commands
+│   ├── openlibrary.go # Open Library API client
+│   └── version.go     # version command
 ├── store/
 │   └── store.go     # Data model and JSON persistence layer
 └── ui/
