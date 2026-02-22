@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
@@ -94,9 +95,7 @@ func progressBar(current, total int) string {
 		return ui.Muted.Render("—")
 	}
 	pct := int(float64(current) / float64(total) * 100)
-	if pct > 100 {
-		pct = 100
-	}
+	pct = min(pct, 100)
 	const width = 10
 	filled := width * pct / 100
 	bar := ui.Title.Render(repeatStr("█", filled)) + ui.Muted.Render(repeatStr("░", width-filled))
@@ -105,11 +104,11 @@ func progressBar(current, total int) string {
 
 // repeatStr returns s repeated n times.
 func repeatStr(s string, n int) string {
-	result := ""
+	var sb strings.Builder
 	for range n {
-		result += s
+		sb.WriteString(s)
 	}
-	return result
+	return sb.String()
 }
 
 // bookListCmd loads all books from the store and renders them in a styled table.

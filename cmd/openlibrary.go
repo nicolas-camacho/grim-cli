@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -105,26 +106,26 @@ func starRating(average float64, count int) string {
 		return "no ratings yet"
 	}
 	full := int(average + 0.5)
-	bar := ""
-	for i := 0; i < 5; i++ {
+	var bar strings.Builder
+	for i := range 5 {
 		if i < full {
-			bar += "★"
+			bar.WriteString("★")
 		} else {
-			bar += "☆"
+			bar.WriteString("☆")
 		}
 	}
-	return fmt.Sprintf("%s %.1f (%s ratings)", bar, average, formatCount(count))
+	return fmt.Sprintf("%s %.1f (%s ratings)", bar.String(), average, formatCount(count))
 }
 
 // formatCount formats an integer with spaces as thousands separators.
 func formatCount(n int) string {
 	s := fmt.Sprintf("%d", n)
-	out := ""
+	var out strings.Builder
 	for i, ch := range s {
 		if i > 0 && (len(s)-i)%3 == 0 {
-			out += " "
+			out.WriteString(" ")
 		}
-		out += string(ch)
+		out.WriteRune(ch)
 	}
-	return out
+	return out.String()
 }
