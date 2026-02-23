@@ -2,12 +2,14 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
+	xterm "github.com/charmbracelet/x/term"
 	"github.com/nicolas-camacho/grim-cli/store"
 	"github.com/nicolas-camacho/grim-cli/ui"
 	"github.com/spf13/cobra"
@@ -103,6 +105,27 @@ func progressBar(current, total int) string {
 	return fmt.Sprintf("%s %d%%", bar, pct)
 }
 
+// truncateTitle shortens s to at most maxWidth visible columns, appending "..."
+// when truncation occurs. Handles multi-byte Unicode correctly.
+func truncateTitle(s string, maxWidth int) string {
+	if maxWidth <= 3 {
+		return "..."
+	}
+	limit := maxWidth - 3
+	width := 0
+	var buf strings.Builder
+	for _, r := range s {
+		rw := lipgloss.Width(string(r))
+		if width+rw > limit {
+			buf.WriteString("...")
+			return buf.String()
+		}
+		buf.WriteRune(r)
+		width += rw
+	}
+	return s
+}
+
 // repeatStr returns s repeated n times.
 func repeatStr(s string, n int) string {
 	var sb strings.Builder
@@ -161,25 +184,60 @@ var bookListCmd = &cobra.Command{
 			}
 		}
 
-		t := table.New().
-			Border(lipgloss.RoundedBorder()).
-			BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("#A673FF"))).
-			Headers(headers...).
-			StyleFunc(func(row, col int) lipgloss.Style {
-				base := lipgloss.NewStyle()
-				if col == 0 {
-					base = base.PaddingLeft(2).PaddingRight(2)
+		buildTable := func(r [][]string) *table.Table {
+			return table.New().
+				Border(lipgloss.RoundedBorder()).
+				BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("#A673FF"))).
+				Headers(headers...).
+				StyleFunc(func(row, col int) lipgloss.Style {
+					base := lipgloss.NewStyle()
+					if col == 0 {
+						base = base.PaddingLeft(2).PaddingRight(2)
+					}
+					if row == table.HeaderRow {
+						return base.Bold(true).Foreground(lipgloss.Color("#A673FF"))
+					}
+					// Alternate row shading for readability.
+					if row%2 == 0 {
+						return base.Foreground(lipgloss.Color("#E5E7EB"))
+					}
+					return base
+				}).
+				Rows(r...)
+		}
+
+		t := buildTable(rows)
+
+		termWidth, _, err := xterm.GetSize(os.Stdout.Fd())
+		if err == nil && termWidth > 0 {
+			tableWidth := lipgloss.Width(t.String())
+			if tableWidth > termWidth {
+				// Find the longest title to know the current title column width.
+				// The column = max(longestTitle, len("Title")) + 4 padding.
+				maxTitleContent := lipgloss.Width("Title")
+				for _, row := range rows {
+					if w := lipgloss.Width(row[0]); w > maxTitleContent {
+						maxTitleContent = w
+					}
 				}
-				if row == table.HeaderRow {
-					return base.Bold(true).Foreground(lipgloss.Color("#A673FF"))
+				titleColWidth := maxTitleContent + 4
+				fixedWidth := tableWidth - titleColWidth
+
+				// Space available for title text inside the column.
+				availableContent := termWidth - fixedWidth - 4
+				if availableContent < 3 {
+					availableContent = 3
 				}
-				// Alternate row shading for readability.
-				if row%2 == 0 {
-					return base.Foreground(lipgloss.Color("#E5E7EB"))
+
+				// Check each title individually and truncate only those that exceed the limit.
+				for i, row := range rows {
+					if lipgloss.Width(row[0]) > availableContent {
+						rows[i][0] = truncateTitle(row[0], availableContent)
+					}
 				}
-				return base
-			}).
-			Rows(rows...)
+				t = buildTable(rows)
+			}
+		}
 
 		fmt.Println(ui.Title.Render("Reading List"))
 		fmt.Println(t)
