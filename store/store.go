@@ -18,6 +18,7 @@ type Book struct {
 	TotalPages   int       `json:"total_pages"`
 	ReadToday    bool      `json:"read_today"`
 	LastReadDate string    `json:"last_read_date"` // format: "2006-01-02"
+	Completed    bool      `json:"completed"`
 	AddedAt      time.Time `json:"added_at"`
 
 	// Open Library metadata — populated on first `grim dt` call.
@@ -113,6 +114,22 @@ func (s *Store) UpdateBook(title string, newPage int) error {
 			s.Books[i].CurrentPage = newPage
 			s.Books[i].LastReadDate = time.Now().Format("2006-01-02")
 			s.Books[i].ReadToday = true
+			return s.save()
+		}
+	}
+	return nil
+}
+
+// CompleteBook marks a book as finished: sets CurrentPage to TotalPages,
+// records today as the last read date, and flags it as completed.
+func (s *Store) CompleteBook(title string) error {
+	for i, b := range s.Books {
+		if b.Title == title {
+			s.Books[i].PreviousPage = b.CurrentPage
+			s.Books[i].CurrentPage = b.TotalPages
+			s.Books[i].LastReadDate = time.Now().Format("2006-01-02")
+			s.Books[i].ReadToday = true
+			s.Books[i].Completed = true
 			return s.save()
 		}
 	}

@@ -123,7 +123,7 @@ The **Read Today** status is computed at runtime by comparing the stored date ag
 
 ### Log a reading session
 
-Lets you pick a book from your list and record the page you finished on today. The previous page and current page are updated automatically, and the book is marked as read today.
+Lets you pick a book from your list, indicate whether you finished it or are still reading, and record your progress. The previous page and current page are updated automatically, and the book is marked as read today.
 
 ```bash
 grim read
@@ -134,9 +134,22 @@ You will be prompted for:
 | Step | Description |
 |---|---|
 | Which book did you read today? | Select a book from the list |
-| What page did you finish on? | The page you stopped at |
+| How's it going? | Choose **Still reading** or **Completed** |
+| What page did you finish on? | The page you stopped at *(only shown when still reading)* |
 
-After confirming, a summary is shown with the session range, pages read, and updated progress bar.
+**Still reading** — records the page you stopped at and updates your progress bar.
+
+**Completed** — automatically sets the current page to the last page and marks the book as completed. No manual page entry needed.
+
+After confirming, a summary is shown with the session range, pages read, and updated progress bar. Completed books also display a `★ completed` status.
+
+The **Read Today** column in `grim list` reflects three possible states:
+
+| Status | Meaning |
+|---|---|
+| `★ completed` | The book has been fully read |
+| `✓ yes` | A session was logged today |
+| `✗ not yet` | No session logged today |
 
 ### View book details
 

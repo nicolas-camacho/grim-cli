@@ -156,7 +156,9 @@ var bookListCmd = &cobra.Command{
 		rows := make([][]string, len(s.Books))
 		for i, b := range s.Books {
 			readStatus := ui.Danger.Render("✗ not yet")
-			if b.WasReadToday() {
+			if b.Completed {
+				readStatus = ui.Warning.Render("★ completed")
+			} else if b.WasReadToday() {
 				readStatus = ui.Success.Render("✓ yes")
 			}
 
@@ -224,10 +226,7 @@ var bookListCmd = &cobra.Command{
 				fixedWidth := tableWidth - titleColWidth
 
 				// Space available for title text inside the column.
-				availableContent := termWidth - fixedWidth - 4
-				if availableContent < 3 {
-					availableContent = 3
-				}
+				availableContent := max(termWidth-fixedWidth-4, 3)
 
 				// Check each title individually and truncate only those that exceed the limit.
 				for i, row := range rows {
@@ -334,7 +333,8 @@ var bookReadCmd = &cobra.Command{
 			options[i] = huh.NewOption(b.Title, b.Title)
 		}
 
-		var selected, pageStr string
+		var selected string
+		var completed bool
 
 		selectForm := huh.NewForm(
 			huh.NewGroup(
@@ -348,6 +348,52 @@ var bookReadCmd = &cobra.Command{
 		if err := selectForm.Run(); err != nil {
 			return err
 		}
+
+		statusForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewSelect[bool]().
+					Title("How's it going?").
+					Options(
+						huh.NewOption("Still reading", false),
+						huh.NewOption("Completed", true),
+					).
+					Value(&completed),
+			),
+		)
+
+		if err := statusForm.Run(); err != nil {
+			return err
+		}
+
+		if completed {
+			// Find the book before completing to get TotalPages for the summary.
+			var book store.Book
+			for _, b := range s.Books {
+				if b.Title == selected {
+					book = b
+					break
+				}
+			}
+
+			if err := s.CompleteBook(selected); err != nil {
+				return err
+			}
+
+			pagesRead := book.TotalPages - book.CurrentPage
+
+			fmt.Println(ui.Box.Render(
+				ui.Title.Render("Session logged") + "\n\n" +
+					ui.Bold.Render("Title:       ") + selected + "\n" +
+					ui.Bold.Render("Session:     ") + fmt.Sprintf("%d → %d", book.CurrentPage, book.TotalPages) + "\n" +
+					ui.Bold.Render("Pages read:  ") + ui.Success.Render(fmt.Sprintf("%d", pagesRead)) + "\n" +
+					ui.Bold.Render("Progress:    ") + progressBar(book.TotalPages, book.TotalPages) + "\n" +
+					ui.Bold.Render("Status:      ") + ui.Warning.Render("★ completed"),
+			))
+
+			return nil
+		}
+
+		var pageStr string
 
 		pageForm := huh.NewForm(
 			huh.NewGroup(
@@ -442,7 +488,9 @@ var bookDetailCmd = &cobra.Command{
 
 		// Local reading stats
 		readStatus := ui.Danger.Render("✗ not yet")
-		if book.WasReadToday() {
+		if book.Completed {
+			readStatus = ui.Warning.Render("★ completed")
+		} else if book.WasReadToday() {
 			readStatus = ui.Success.Render("✓ yes")
 		}
 
