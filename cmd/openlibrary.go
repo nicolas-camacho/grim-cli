@@ -43,7 +43,7 @@ var olClient = &http.Client{Timeout: 8 * time.Second}
 // fetchBookMeta queries the Open Library search API and returns the work key,
 // author, and publish year for the best matching result.
 func fetchBookMeta(title string) (*BookMeta, error) {
-	searchURL := "https://openlibrary.org/search.json?limit=1&language=eng&title=" + url.QueryEscape(title)
+	searchURL := "https://openlibrary.org/search.json?limit=1&title=" + url.QueryEscape(title)
 
 	resp, err := olClient.Get(searchURL)
 	if err != nil {

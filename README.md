@@ -6,7 +6,9 @@ A terminal reading tracker built with Go and the [Charm](https://charm.sh) suite
 
 - Add books with title, total pages, current page, and daily reading status
 - List all books in a styled table with a live reading progress bar
+- Log reading sessions and mark books as completed
 - View detailed information for a book, enriched with author, publish year, and rating from Open Library
+- Edit a book's title or total pages interactively
 - Delete books interactively
 - Data persists locally in `~/.grim/books.json`
 
@@ -81,6 +83,7 @@ Most commands have a short alias:
 | `grim a` | `grim add` |
 | `grim ls` | `grim list` |
 | `grim rd` | `grim read` |
+| `grim mod` | `grim modified` |
 
 ### Add a book
 
@@ -175,7 +178,32 @@ You will be prompted to select a book from your list. The detail panel includes:
 | Published | Year of first publication from Open Library |
 | Rating | Star rating and total count from Open Library |
 
+**Flags:**
+
+| Flag | Description |
+|---|---|
+| `-r`, `--refresh` | Force a new Open Library search even if cached metadata already exists. Updates stored metadata with the new result. |
+| `-s`, `--search` | Prompt for a different title to use when searching Open Library. Useful when the stored title does not match what Open Library expects. The result is displayed but not saved. |
+
 > **Note:** The Open Library lookup requires an internet connection. If no match is found, local data is still displayed normally.
+
+### Edit a book
+
+Lets you update the title or total pages of an existing book interactively.
+
+```bash
+grim modified
+```
+
+You will be prompted to:
+
+| Step | Description |
+|---|---|
+| Which book do you want to modify? | Select a book from the list |
+| What do you want to change? | Choose **Title** or **Total pages** |
+| New value | Enter the new title or the new total page count |
+
+After confirming, a summary is shown with the updated field.
 
 ### Delete a book
 
@@ -237,7 +265,7 @@ grim-cli/
 ├── main.go          # Entry point — calls cmd.Execute()
 ├── cmd/
 │   ├── root.go      # Root Cobra command and Execute() function
-│   ├── book.go        # add, list, del, read, and dt commands
+│   ├── book.go        # add, list, del, read, dt, and modified commands
 │   ├── openlibrary.go # Open Library API client
 │   └── version.go     # version command
 ├── store/

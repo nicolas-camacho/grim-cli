@@ -150,6 +150,30 @@ func (s *Store) UpdateBookMeta(title, workKey, author string, publishYear int) e
 	return nil
 }
 
+// UpdateTotalPages sets a new total page count for the given book and persists the change.
+// It is a no-op if no book with the given title is found.
+func (s *Store) UpdateTotalPages(title string, totalPages int) error {
+	for i, b := range s.Books {
+		if b.Title == title {
+			s.Books[i].TotalPages = totalPages
+			return s.save()
+		}
+	}
+	return nil
+}
+
+// UpdateTitle renames a book and persists the change.
+// It is a no-op if no book with the given title is found.
+func (s *Store) UpdateTitle(oldTitle, newTitle string) error {
+	for i, b := range s.Books {
+		if b.Title == oldTitle {
+			s.Books[i].Title = newTitle
+			return s.save()
+		}
+	}
+	return nil
+}
+
 // DeleteBook removes the first book whose title matches and persists the change.
 // It is a no-op if no match is found.
 func (s *Store) DeleteBook(title string) error {

@@ -445,10 +445,13 @@ var bookReadCmd = &cobra.Command{
 
 // bookDetailCmd shows a book selector, fetches enriched metadata from Open
 // Library, and renders a combined local + remote detail panel.
+// The --refresh flag forces a new Open Library search even when cached metadata exists.
 var bookDetailCmd = &cobra.Command{
 	Use:   "dt",
 	Short: "Show detailed information for a book",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		refresh, _ := cmd.Flags().GetBool("refresh")
+		useCustomSearch, _ := cmd.Flags().GetBool("search")
 		s, err := store.New()
 		if err != nil {
 			return err
@@ -476,6 +479,21 @@ var bookDetailCmd = &cobra.Command{
 
 		if err := selectForm.Run(); err != nil {
 			return err
+		}
+
+		var searchTitle string
+		if useCustomSearch {
+			searchForm := huh.NewForm(
+				huh.NewGroup(
+					huh.NewInput().
+						Title("Search Open Library under which title?").
+						Placeholder(selected).
+						Value(&searchTitle),
+				),
+			)
+			if err := searchForm.Run(); err != nil {
+				return err
+			}
 		}
 
 		var book store.Book
@@ -514,16 +532,23 @@ var bookDetailCmd = &cobra.Command{
 		publishYear := book.PublishYear
 		workKey := book.WorkKey
 
-		if workKey == "" {
+		query := book.Title
+		if searchTitle != "" {
+			query = searchTitle
+		}
+
+		if workKey == "" || refresh || searchTitle != "" {
 			fmt.Print(ui.Muted.Render("Fetching book info from Open Library..."))
-			meta, metaErr := fetchBookMeta(book.Title)
+			meta, metaErr := fetchBookMeta(query)
 			fmt.Print("\r\033[K") // clear the loading line
 			if metaErr == nil {
 				workKey = meta.WorkKey
 				author = meta.Author
 				publishYear = meta.PublishYear
-				// Persist so future calls skip the search entirely.
-				_ = s.UpdateBookMeta(book.Title, workKey, author, publishYear)
+				// Only persist when not using a custom search title.
+				if searchTitle == "" {
+					_ = s.UpdateBookMeta(book.Title, workKey, author, publishYear)
+				}
 			}
 		}
 
@@ -572,10 +597,125 @@ var bookDetailCmd = &cobra.Command{
 	},
 }
 
+// bookModifyCmd lets the user update the title or total page count of a book.
+// It presents a book selector, a field selector, and then prompts for the new value.
+var bookModifyCmd = &cobra.Command{
+	Use:     "modified",
+	Aliases: []string{"mod"},
+	Short:   "Update the title or total pages of a book",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		s, err := store.New()
+		if err != nil {
+			return err
+		}
+
+		if len(s.Books) == 0 {
+			fmt.Println(ui.Muted.Render("No books yet. Add one with: grim add"))
+			return nil
+		}
+
+		options := make([]huh.Option[string], len(s.Books))
+		for i, b := range s.Books {
+			options[i] = huh.NewOption(b.Title, b.Title)
+		}
+
+		var selected, field string
+
+		selectForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewSelect[string]().
+					Title("Which book do you want to modify?").
+					Options(options...).
+					Value(&selected),
+				huh.NewSelect[string]().
+					Title("What do you want to change?").
+					Options(
+						huh.NewOption("Title", "title"),
+						huh.NewOption("Total pages", "pages"),
+					).
+					Value(&field),
+			),
+		)
+
+		if err := selectForm.Run(); err != nil {
+			return err
+		}
+
+		if field == "title" {
+			var newTitle string
+
+			titleForm := huh.NewForm(
+				huh.NewGroup(
+					huh.NewInput().
+						Title("New title").
+						Placeholder(selected).
+						Value(&newTitle),
+				),
+			)
+
+			if err := titleForm.Run(); err != nil {
+				return err
+			}
+
+			if err := s.UpdateTitle(selected, newTitle); err != nil {
+				return err
+			}
+
+			fmt.Println(ui.Box.Render(
+				ui.Title.Render("Book updated") + "\n\n" +
+					ui.Bold.Render("Old title: ") + selected + "\n" +
+					ui.Bold.Render("New title: ") + newTitle,
+			))
+
+			return nil
+		}
+
+		// field == "pages"
+		var totalPagesStr string
+
+		pageForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("New total pages").
+					Placeholder("350").
+					Validate(func(s string) error {
+						if _, err := strconv.Atoi(s); err != nil {
+							return fmt.Errorf("must be a number")
+						}
+						return nil
+					}).
+					Value(&totalPagesStr),
+			),
+		)
+
+		if err := pageForm.Run(); err != nil {
+			return err
+		}
+
+		totalPages, _ := strconv.Atoi(totalPagesStr)
+
+		if err := s.UpdateTotalPages(selected, totalPages); err != nil {
+			return err
+		}
+
+		fmt.Println(ui.Box.Render(
+			ui.Title.Render("Book updated") + "\n\n" +
+				ui.Bold.Render("Title:       ") + selected + "\n" +
+				ui.Bold.Render("Total pages: ") + fmt.Sprintf("%d", totalPages),
+		))
+
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(bookAddCmd)
 	rootCmd.AddCommand(bookListCmd)
 	rootCmd.AddCommand(bookDeleteCmd)
 	rootCmd.AddCommand(bookReadCmd)
 	rootCmd.AddCommand(bookDetailCmd)
+	rootCmd.AddCommand(bookModifyCmd)
+
+	bookDetailCmd.Flags().BoolP("refresh", "r", false, "Force a new Open Library search even if cached metadata exists")
+	bookDetailCmd.Flags().BoolP("search", "s", false, "Prompt for a different title to search on Open Library (result is not saved)")
 }
