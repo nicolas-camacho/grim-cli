@@ -109,6 +109,69 @@ func TestAddBook_MultipleBooks(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// AddManga
+// ---------------------------------------------------------------------------
+
+func TestAddManga_AppendsToList(t *testing.T) {
+	s := newTestStore(t)
+
+	if err := s.AddMangaComic("One Piece", "volume", 5, 110, false); err != nil {
+		t.Fatalf("AddManga returned unexpected error: %v", err)
+	}
+
+	if len(s.Books) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(s.Books))
+	}
+
+	b := s.Books[0]
+	if b.Title != "One Piece" {
+		t.Errorf("expected title %q, got %q", "One Piece", b.Title)
+	}
+	if !b.IsMangaComic {
+		t.Error("expected IsManga to be true")
+	}
+	if b.TrackingUnit != "volume" {
+		t.Errorf("expected TrackingUnit %q, got %q", "volume", b.TrackingUnit)
+	}
+	if b.CurrentPage != 5 {
+		t.Errorf("expected CurrentPage 5, got %d", b.CurrentPage)
+	}
+	if b.TotalPages != 110 {
+		t.Errorf("expected TotalPages 110, got %d", b.TotalPages)
+	}
+}
+
+func TestAddManga_ReadToday_SetsLastReadDate(t *testing.T) {
+	s := newTestStore(t)
+
+	if err := s.AddMangaComic("Berserk", "chapter", 200, 364, true); err != nil {
+		t.Fatalf("AddManga returned unexpected error: %v", err)
+	}
+
+	today := time.Now().Format("2006-01-02")
+	if s.Books[0].LastReadDate != today {
+		t.Errorf("expected LastReadDate %q, got %q", today, s.Books[0].LastReadDate)
+	}
+}
+
+func TestAddManga_MixedWithBooks(t *testing.T) {
+	s := newTestStore(t)
+
+	_ = s.AddBook("Dune", 100, 688, false)
+	_ = s.AddMangaComic("Vagabond", "volume", 10, 37, false)
+
+	if len(s.Books) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(s.Books))
+	}
+	if s.Books[0].IsMangaComic {
+		t.Error("expected first entry to not be manga")
+	}
+	if !s.Books[1].IsMangaComic {
+		t.Error("expected second entry to be manga")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // DeleteBook
 // ---------------------------------------------------------------------------
 

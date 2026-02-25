@@ -11,9 +11,10 @@ import (
 )
 
 // Book represents a single entry in the reading list.
+// It handles both books (tracked by pages) and manga (tracked by volumes or chapters).
 type Book struct {
 	Title        string    `json:"title"`
-	PreviousPage int       `json:"previous_page"` // page before the last update
+	PreviousPage int       `json:"previous_page"` // page/vol/chapter before the last update
 	CurrentPage  int       `json:"current_page"`
 	TotalPages   int       `json:"total_pages"`
 	ReadToday    bool      `json:"read_today"`
@@ -21,8 +22,12 @@ type Book struct {
 	Completed    bool      `json:"completed"`
 	AddedAt      time.Time `json:"added_at"`
 
-	// Open Library metadata — populated on first `grim dt` call.
-	WorkKey     string `json:"work_key,omitempty"`     // e.g. "/works/OL45804W"
+	// Manga-specific fields.
+	IsMangaComic bool   `json:"is_manga,omitempty"`
+	TrackingUnit string `json:"tracking_unit,omitempty"` // "volume" or "chapter"
+
+	// Open Library metadata — populated on first `grim dt` call (books only).
+	WorkKey     string `json:"work_key,omitempty"` // e.g. "/works/OL45804W"
 	Author      string `json:"author,omitempty"`
 	PublishYear int    `json:"publish_year,omitempty"`
 }
@@ -101,6 +106,27 @@ func (s *Store) AddBook(title string, page, totalPages int, readToday bool) erro
 		ReadToday:    readToday,
 		LastReadDate: lastReadDate,
 		AddedAt:      time.Now(),
+	})
+	return s.save()
+}
+
+// AddManga appends a new manga to the list and persists the change.
+// trackingUnit must be "volume" or "chapter".
+func (s *Store) AddMangaComic(title, trackingUnit string, current, total int, readToday bool) error {
+	lastReadDate := ""
+	if readToday {
+		lastReadDate = time.Now().Format("2006-01-02")
+	}
+	s.Books = append(s.Books, Book{
+		Title:        title,
+		PreviousPage: 0,
+		CurrentPage:  current,
+		TotalPages:   total,
+		ReadToday:    readToday,
+		LastReadDate: lastReadDate,
+		AddedAt:      time.Now(),
+		IsMangaComic: true,
+		TrackingUnit: trackingUnit,
 	})
 	return s.save()
 }

@@ -1,15 +1,16 @@
 # grim-cli
 
-A terminal reading tracker built with Go and the [Charm](https://charm.sh) suite. Track your books, reading progress, and daily reading habits — all from the command line.
+A terminal reading tracker built with Go and the [Charm](https://charm.sh) suite. Track your books, manga, and comics — reading progress and daily reading habits — all from the command line.
 
 ## Features
 
-- Add books with title, total pages, current page, and daily reading status
-- List all books in a styled table with a live reading progress bar
-- Log reading sessions and mark books as completed
+- Add books or manga/comics with title, progress, and daily reading status
+- Books are tracked by pages; manga/comics are tracked by volume or chapter
+- List all entries in a styled table with a live reading progress bar
+- Log reading sessions and mark entries as completed
 - View detailed information for a book, enriched with author, publish year, and rating from Open Library
-- Edit a book's title or total pages interactively
-- Delete books interactively
+- Edit an entry's title or total count interactively
+- Delete entries interactively
 - Data persists locally in `~/.grim/books.json`
 
 ## Requirements
@@ -85,26 +86,36 @@ Most commands have a short alias:
 | `grim rd` | `grim read` |
 | `grim mod` | `grim modified` |
 
-### Add a book
+### Add an entry
 
-Launches an interactive form that asks for the book details sequentially.
+Launches an interactive form. First you choose the type, then fill in the details.
 
 ```bash
 grim add
 ```
 
-You will be prompted for:
+**Book:**
 
 | Field | Description |
 |---|---|
 | Book title | The name of the book |
 | Total pages | Total number of pages in the book |
 | Current page | The page you are currently on |
-| Did you read it today? | Whether you read the book today |
+| Did you read it today? | Whether you read it today |
 
-### List all books
+**Manga/Comic:**
 
-Displays a table with all tracked books and their current status.
+| Field | Description |
+|---|---|
+| Manga/Comic title | The name of the manga or comic |
+| Track progress by | Choose **Volume** or **Chapter** |
+| Total volumes/chapters | Total number of volumes or chapters |
+| Current volume/chapter | The volume or chapter you are currently on |
+| Did you read it today? | Whether you read it today |
+
+### List all entries
+
+Displays a table with all tracked entries and their current status.
 
 ```bash
 grim list
@@ -114,100 +125,107 @@ The table includes:
 
 | Column | Description |
 |---|---|
-| Title | Name of the book |
-| Page | Current page |
+| Title | Name of the entry |
+| Type | `book` or `manga/comic` |
+| Status | Current position — `pg.X` for books, `Vol.X` or `Ch.X` for manga/comics |
 | Progress | Visual progress bar and percentage |
-| Last Read | Date the book was last read |
-| Session | Page range of the last reading session (e.g. `120 → 180`) |
-| Pages Read | Number of pages read in the last session |
-| Read Today | Whether the book was read today |
+| Last Read | Date the entry was last read |
+| Session | Range of the last reading session (e.g. `120 → 180`) |
+| Read Today | Whether the entry was read today |
 
 The **Read Today** status is computed at runtime by comparing the stored date against today's date, so it resets automatically at midnight without modifying any data.
 
 ### Log a reading session
 
-Lets you pick a book from your list, indicate whether you finished it or are still reading, and record your progress. The previous page and current page are updated automatically, and the book is marked as read today.
+Lets you pick an entry from your list, indicate whether you finished it or are still reading, and record your progress.
 
 ```bash
 grim read
 ```
 
-You will be prompted for:
-
 | Step | Description |
 |---|---|
-| Which book did you read today? | Select a book from the list |
+| What did you read today? | Select an entry from the list |
 | How's it going? | Choose **Still reading** or **Completed** |
-| What page did you finish on? | The page you stopped at *(only shown when still reading)* |
+| What page/volume/chapter did you finish on? | Your stopping point *(only shown when still reading)* |
 
-**Still reading** — records the page you stopped at and updates your progress bar.
+**Still reading** — records the position you stopped at and updates your progress bar.
 
-**Completed** — automatically sets the current page to the last page and marks the book as completed. No manual page entry needed.
+**Completed** — automatically sets the current position to the last page/volume/chapter and marks the entry as completed. No manual input needed.
 
-After confirming, a summary is shown with the session range, pages read, and updated progress bar. Completed books also display a `★ completed` status.
+After confirming, a summary is shown with the session range, units read, and updated progress bar. Completed entries display a `★ completed` status.
 
 The **Read Today** column in `grim list` reflects three possible states:
 
 | Status | Meaning |
 |---|---|
-| `★ completed` | The book has been fully read |
+| `★ completed` | The entry has been fully read |
 | `✓ yes` | A session was logged today |
 | `✗ not yet` | No session logged today |
 
-### View book details
+### View details
 
-Shows a detailed panel for a selected book. Local reading stats are combined with live metadata fetched from the [Open Library](https://openlibrary.org/) API.
+Shows a detailed panel for a selected entry.
 
 ```bash
 grim dt
 ```
 
-You will be prompted to select a book from your list. The detail panel includes:
+**Books** — local reading stats combined with live metadata from the [Open Library](https://openlibrary.org/) API:
 
 | Field | Description |
 |---|---|
 | Title | Name of the book |
 | Current page | Current page out of total pages |
 | Progress | Visual progress bar and percentage |
-| Last session | Page range of the last reading session (e.g. `95 → 120`) |
+| Last session | Page range of the last reading session |
 | Pages read | Pages read in the last session |
-| Last read | Date the book was last read |
-| Added on | Date the book was added to the list |
-| Read today | Whether the book was read today |
+| Last read | Date last read |
+| Added on | Date added to the list |
+| Read today | Whether it was read today |
 | Author | Author name from Open Library |
 | Published | Year of first publication from Open Library |
 | Rating | Star rating and total count from Open Library |
 
-**Flags:**
+**Manga/Comics** — same local stats with labels adapted to volumes or chapters. Open Library is not queried.
+
+| Field | Description |
+|---|---|
+| Title | Name of the manga/comic |
+| Current vol./ch. | Current volume or chapter out of total |
+| Progress | Visual progress bar and percentage |
+| Last session | Range of the last session |
+| Volumes/Chapters | Units read in the last session |
+| Last read | Date last read |
+| Added on | Date added to the list |
+| Read today | Whether it was read today |
+
+**Flags** *(books only)*:
 
 | Flag | Description |
 |---|---|
-| `-r`, `--refresh` | Force a new Open Library search even if cached metadata already exists. Updates stored metadata with the new result. |
-| `-s`, `--search` | Prompt for a different title to use when searching Open Library. Useful when the stored title does not match what Open Library expects. The result is displayed but not saved. |
+| `-r`, `--refresh` | Force a new Open Library search even if cached metadata already exists |
+| `-s`, `--search` | Prompt for a different title to use when searching Open Library. Result is displayed but not saved |
 
 > **Note:** The Open Library lookup requires an internet connection. If no match is found, local data is still displayed normally.
 
-### Edit a book
+### Edit an entry
 
-Lets you update the title or total pages of an existing book interactively.
+Lets you update the title or total count of an existing entry interactively.
 
 ```bash
 grim modified
 ```
 
-You will be prompted to:
-
 | Step | Description |
 |---|---|
-| Which book do you want to modify? | Select a book from the list |
-| What do you want to change? | Choose **Title** or **Total pages** |
-| New value | Enter the new title or the new total page count |
+| Which entry do you want to modify? | Select an entry from the list |
+| What do you want to change? | Choose **Title** or **Total pages / Total volumes / Total chapters** |
+| New value | Enter the new title or the new total count |
 
-After confirming, a summary is shown with the updated field.
+### Delete an entry
 
-### Delete a book
-
-Launches an interactive selector to pick a book, then asks for confirmation before deleting.
+Launches an interactive selector to pick an entry, then asks for confirmation before deleting.
 
 ```bash
 grim del

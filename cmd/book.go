@@ -15,17 +15,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// bookAddCmd launches an interactive huh form that collects book details
-// sequentially and persists the new entry via the store.
+// bookAddCmd asks whether the user wants to add a book or a manga, then
+// collects the appropriate details and persists the new entry via the store.
 var bookAddCmd = &cobra.Command{
 	Use:     "add",
 	Aliases: []string{"a"},
-	Short:   "Add a book to your reading list",
+	Short:   "Add a book, manga or comic to your reading list",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var title, pageStr, totalPagesStr string
-		var readToday bool
-
-		// numValidate is reused for both numeric inputs.
+		// numValidate is reused for all numeric inputs.
 		numValidate := func(s string) error {
 			if _, err := strconv.Atoi(s); err != nil {
 				return fmt.Errorf("must be a number")
@@ -33,43 +30,131 @@ var bookAddCmd = &cobra.Command{
 			return nil
 		}
 
-		form := huh.NewForm(
+		// Step 1: choose entry type.
+		var entryType string
+		typeForm := huh.NewForm(
 			huh.NewGroup(
-				huh.NewInput().
-					Title("Book title").
-					Placeholder("The Go Programming Language").
-					Value(&title),
-
-				huh.NewInput().
-					Title("Total pages").
-					Placeholder("350").
-					Validate(numValidate).
-					Value(&totalPagesStr),
-
-				huh.NewInput().
-					Title("Current page").
-					Placeholder("0").
-					Validate(numValidate).
-					Value(&pageStr),
-
-				huh.NewConfirm().
-					Title("Did you read it today?").
-					Value(&readToday),
+				huh.NewSelect[string]().
+					Title("What do you want to add?").
+					Options(
+						huh.NewOption("Book", "book"),
+						huh.NewOption("Manga/Comic", "manga"),
+					).
+					Value(&entryType),
 			),
 		)
-
-		if err := form.Run(); err != nil {
+		if err := typeForm.Run(); err != nil {
 			return err
 		}
-
-		page, _ := strconv.Atoi(pageStr)
-		totalPages, _ := strconv.Atoi(totalPagesStr)
 
 		s, err := store.New()
 		if err != nil {
 			return err
 		}
-		if err := s.AddBook(title, page, totalPages, readToday); err != nil {
+
+		if entryType == "book" {
+			var title, pageStr, totalPagesStr string
+			var readToday bool
+
+			form := huh.NewForm(
+				huh.NewGroup(
+					huh.NewInput().
+						Title("Book title").
+						Placeholder("The Go Programming Language").
+						Value(&title),
+					huh.NewInput().
+						Title("Total pages").
+						Placeholder("350").
+						Validate(numValidate).
+						Value(&totalPagesStr),
+					huh.NewInput().
+						Title("Current page").
+						Placeholder("0").
+						Validate(numValidate).
+						Value(&pageStr),
+					huh.NewConfirm().
+						Title("Did you read it today?").
+						Value(&readToday),
+				),
+			)
+			if err := form.Run(); err != nil {
+				return err
+			}
+
+			page, _ := strconv.Atoi(pageStr)
+			totalPages, _ := strconv.Atoi(totalPagesStr)
+
+			if err := s.AddBook(title, page, totalPages, readToday); err != nil {
+				return err
+			}
+
+			readStatus := ui.Danger.Render("✗ not yet")
+			if readToday {
+				readStatus = ui.Success.Render("✓ yes")
+			}
+
+			fmt.Println(ui.Box.Render(
+				ui.Title.Render("Book added") + "\n\n" +
+					ui.Bold.Render("Title:        ") + title + "\n" +
+					ui.Bold.Render("Current page: ") + fmt.Sprintf("%d", page) + "\n" +
+					ui.Bold.Render("Read today:   ") + readStatus,
+			))
+			return nil
+		}
+
+		// Manga flow — two sequential forms so the second can use the chosen unit label.
+		var title, trackingUnit string
+		metaForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Manga/Comic title").
+					Placeholder("One Piece").
+					Value(&title),
+				huh.NewSelect[string]().
+					Title("Track progress by").
+					Options(
+						huh.NewOption("Volume", "volume"),
+						huh.NewOption("Chapter", "chapter"),
+					).
+					Value(&trackingUnit),
+			),
+		)
+		if err := metaForm.Run(); err != nil {
+			return err
+		}
+
+		unitSingular := "volume"
+		if trackingUnit == "chapter" {
+			unitSingular = "chapter"
+		}
+
+		var totalStr, currentStr string
+		var readToday bool
+		progressForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title(fmt.Sprintf("Total %ss", unitSingular)).
+					Placeholder("100").
+					Validate(numValidate).
+					Value(&totalStr),
+				huh.NewInput().
+					Title(fmt.Sprintf("Current %s", unitSingular)).
+					Placeholder("0").
+					Validate(numValidate).
+					Value(&currentStr),
+				huh.NewConfirm().
+					Title("Did you read it today?").
+					Value(&readToday),
+			),
+		)
+		if err := progressForm.Run(); err != nil {
+			return err
+		}
+
+		total, _ := strconv.Atoi(totalStr)
+		current, _ := strconv.Atoi(currentStr)
+
+		if err := s.AddMangaComic(title, trackingUnit, current, total, readToday); err != nil {
 			return err
 		}
 
@@ -78,15 +163,35 @@ var bookAddCmd = &cobra.Command{
 			readStatus = ui.Success.Render("✓ yes")
 		}
 
+		capUnit := strings.ToUpper(unitSingular[:1]) + unitSingular[1:]
 		fmt.Println(ui.Box.Render(
-			ui.Title.Render("Book added") + "\n\n" +
-				ui.Bold.Render("Title:        ") + title + "\n" +
-				ui.Bold.Render("Current page: ") + fmt.Sprintf("%d", page) + "\n" +
-				ui.Bold.Render("Read today:   ") + readStatus,
+			ui.Title.Render("Manga added") + "\n\n" +
+				ui.Bold.Render("Title:          ") + title + "\n" +
+				ui.Bold.Render(fmt.Sprintf("Current %-8s", capUnit+":")) + fmt.Sprintf("%d", current) + "\n" +
+				ui.Bold.Render("Read today:     ") + readStatus,
 		))
-
 		return nil
 	},
+}
+
+// mangaComicUnitLabel returns "Vol." or "Ch." for a manga entry, or "" for a book.
+func mangaComicUnitLabel(b store.Book) string {
+	if !b.IsMangaComic {
+		return ""
+	}
+	if b.TrackingUnit == "chapter" {
+		return "Ch."
+	}
+	return "Vol."
+}
+
+// currentPosition formats the current progress value for display.
+// Books show "pg. X"; manga show "Vol. 3" or "Ch. 25".
+func currentPosition(b store.Book) string {
+	if b.IsMangaComic {
+		return fmt.Sprintf("%s%d", mangaComicUnitLabel(b), b.CurrentPage)
+	}
+	return fmt.Sprintf("pg.%d", b.CurrentPage)
 }
 
 // progressBar renders a 10-character block bar followed by a percentage.
@@ -135,12 +240,12 @@ func repeatStr(s string, n int) string {
 	return sb.String()
 }
 
-// bookListCmd loads all books from the store and renders them in a styled table.
+// bookListCmd loads all entries from the store and renders them in a styled table.
 // The "Read Today" column is evaluated live so it resets at midnight automatically.
 var bookListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
-	Short:   "List all books and their status",
+	Short:   "List all books and manga and their status",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := store.New()
 		if err != nil {
@@ -148,11 +253,11 @@ var bookListCmd = &cobra.Command{
 		}
 
 		if len(s.Books) == 0 {
-			fmt.Println(ui.Muted.Render("No books yet. Add one with: grim add"))
+			fmt.Println(ui.Muted.Render("No entries yet. Add one with: grim add"))
 			return nil
 		}
 
-		headers := []string{"Title", "Page", "Progress", "Last Read", "Session", "Pages Read", "Read Today"}
+		headers := []string{"Title", "Type", "Status", "Progress", "Last Read", "Session", "Read Today"}
 		rows := make([][]string, len(s.Books))
 		for i, b := range s.Books {
 			readStatus := ui.Danger.Render("✗ not yet")
@@ -167,21 +272,24 @@ var bookListCmd = &cobra.Command{
 				lastRead = b.LastReadDate
 			}
 
-			// Session and pages read are only meaningful when the book has been read at least once.
+			// Session is only meaningful when the entry has been read at least once.
 			session := ui.Muted.Render("—")
-			pagesRead := ui.Muted.Render("—")
 			if b.LastReadDate != "" {
 				session = fmt.Sprintf("%d → %d", b.PreviousPage, b.CurrentPage)
-				pagesRead = fmt.Sprintf("%d", b.CurrentPage-b.PreviousPage)
+			}
+
+			entryType := ui.Muted.Render("book")
+			if b.IsMangaComic {
+				entryType = ui.Muted.Render("manga/comic")
 			}
 
 			rows[i] = []string{
 				b.Title,
-				fmt.Sprintf("%d", b.CurrentPage),
+				entryType,
+				currentPosition(b),
 				progressBar(b.CurrentPage, b.TotalPages),
 				lastRead,
 				session,
-				pagesRead,
 				readStatus,
 			}
 		}
@@ -244,11 +352,11 @@ var bookListCmd = &cobra.Command{
 	},
 }
 
-// bookDeleteCmd presents an interactive selector of all books, then asks for
+// bookDeleteCmd presents an interactive selector of all entries, then asks for
 // confirmation before removing the chosen entry from the store.
 var bookDeleteCmd = &cobra.Command{
 	Use:   "del",
-	Short: "Delete a book from your reading list",
+	Short: "Delete a book or manga/comic from your reading list",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := store.New()
 		if err != nil {
@@ -256,11 +364,11 @@ var bookDeleteCmd = &cobra.Command{
 		}
 
 		if len(s.Books) == 0 {
-			fmt.Println(ui.Muted.Render("No books yet. Add one with: grim add"))
+			fmt.Println(ui.Muted.Render("No entries yet. Add one with: grim add"))
 			return nil
 		}
 
-		// Build the option list from current books.
+		// Build the option list from current entries.
 		options := make([]huh.Option[string], len(s.Books))
 		for i, b := range s.Books {
 			options[i] = huh.NewOption(b.Title, b.Title)
@@ -269,11 +377,11 @@ var bookDeleteCmd = &cobra.Command{
 		var selected string
 		var confirmed bool
 
-		// Step 1: pick a book.
+		// Step 1: pick an entry.
 		selectForm := huh.NewForm(
 			huh.NewGroup(
 				huh.NewSelect[string]().
-					Title("Which book do you want to delete?").
+					Title("Which entry do you want to delete?").
 					Options(options...).
 					Value(&selected),
 			),
@@ -283,7 +391,7 @@ var bookDeleteCmd = &cobra.Command{
 			return err
 		}
 
-		// Step 2: confirm with the book title in the message.
+		// Step 2: confirm with the title in the message.
 		confirmForm := huh.NewForm(
 			huh.NewGroup(
 				huh.NewConfirm().
@@ -297,7 +405,7 @@ var bookDeleteCmd = &cobra.Command{
 		}
 
 		if !confirmed {
-			fmt.Println(ui.Muted.Render("Cancelled. No books were deleted."))
+			fmt.Println(ui.Muted.Render("Cancelled. No entries were deleted."))
 			return nil
 		}
 
@@ -311,12 +419,12 @@ var bookDeleteCmd = &cobra.Command{
 }
 
 // bookReadCmd lets the user mark a reading session for today. It presents
-// a selector to pick a book, then asks for the page they stopped at.
-// The store shifts CurrentPage → PreviousPage and records today's date.
+// a selector to pick an entry, then asks for the position they stopped at
+// (page for books, volume or chapter for manga).
 var bookReadCmd = &cobra.Command{
 	Use:     "read",
 	Aliases: []string{"rd"},
-	Short:   "Log today's reading session for a book",
+	Short:   "Log today's reading session",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := store.New()
 		if err != nil {
@@ -324,7 +432,7 @@ var bookReadCmd = &cobra.Command{
 		}
 
 		if len(s.Books) == 0 {
-			fmt.Println(ui.Muted.Render("No books yet. Add one with: grim add"))
+			fmt.Println(ui.Muted.Render("No entries yet. Add one with: grim add"))
 			return nil
 		}
 
@@ -339,7 +447,7 @@ var bookReadCmd = &cobra.Command{
 		selectForm := huh.NewForm(
 			huh.NewGroup(
 				huh.NewSelect[string]().
-					Title("Which book did you read today?").
+					Title("What did you read today?").
 					Options(options...).
 					Value(&selected),
 			),
@@ -347,6 +455,15 @@ var bookReadCmd = &cobra.Command{
 
 		if err := selectForm.Run(); err != nil {
 			return err
+		}
+
+		// Find the selected entry to adapt labels and prompts.
+		var book store.Book
+		for _, b := range s.Books {
+			if b.Title == selected {
+				book = b
+				break
+			}
 		}
 
 		statusForm := huh.NewForm(
@@ -366,26 +483,25 @@ var bookReadCmd = &cobra.Command{
 		}
 
 		if completed {
-			// Find the book before completing to get TotalPages for the summary.
-			var book store.Book
-			for _, b := range s.Books {
-				if b.Title == selected {
-					book = b
-					break
-				}
-			}
-
 			if err := s.CompleteBook(selected); err != nil {
 				return err
 			}
 
-			pagesRead := book.TotalPages - book.CurrentPage
+			unitsRead := book.TotalPages - book.CurrentPage
+			unitsLabel := "Pages read:  "
+			if book.IsMangaComic {
+				if book.TrackingUnit == "chapter" {
+					unitsLabel = "Chapters:    "
+				} else {
+					unitsLabel = "Volumes:     "
+				}
+			}
 
 			fmt.Println(ui.Box.Render(
 				ui.Title.Render("Session logged") + "\n\n" +
 					ui.Bold.Render("Title:       ") + selected + "\n" +
 					ui.Bold.Render("Session:     ") + fmt.Sprintf("%d → %d", book.CurrentPage, book.TotalPages) + "\n" +
-					ui.Bold.Render("Pages read:  ") + ui.Success.Render(fmt.Sprintf("%d", pagesRead)) + "\n" +
+					ui.Bold.Render(unitsLabel) + ui.Success.Render(fmt.Sprintf("%d", unitsRead)) + "\n" +
 					ui.Bold.Render("Progress:    ") + progressBar(book.TotalPages, book.TotalPages) + "\n" +
 					ui.Bold.Render("Status:      ") + ui.Warning.Render("★ completed"),
 			))
@@ -393,12 +509,21 @@ var bookReadCmd = &cobra.Command{
 			return nil
 		}
 
-		var pageStr string
+		// Build prompt label based on entry type.
+		posPrompt := "What page did you finish on?"
+		if book.IsMangaComic {
+			if book.TrackingUnit == "chapter" {
+				posPrompt = "What chapter did you finish on?"
+			} else {
+				posPrompt = "What volume did you finish on?"
+			}
+		}
 
+		var pageStr string
 		pageForm := huh.NewForm(
 			huh.NewGroup(
 				huh.NewInput().
-					Title("What page did you finish on?").
+					Title(posPrompt).
 					Placeholder("0").
 					Validate(func(s string) error {
 						if _, err := strconv.Atoi(s); err != nil {
@@ -420,7 +545,7 @@ var bookReadCmd = &cobra.Command{
 			return err
 		}
 
-		// Find the updated book to show session info in the confirmation.
+		// Find the updated entry to show session info in the confirmation.
 		var updated store.Book
 		for _, b := range s.Books {
 			if b.Title == selected {
@@ -429,13 +554,21 @@ var bookReadCmd = &cobra.Command{
 			}
 		}
 
-		pagesRead := newPage - updated.PreviousPage
+		unitsRead := newPage - updated.PreviousPage
+		unitsLabel := "Pages read:  "
+		if book.IsMangaComic {
+			if book.TrackingUnit == "chapter" {
+				unitsLabel = "Chapters:    "
+			} else {
+				unitsLabel = "Volumes:     "
+			}
+		}
 
 		fmt.Println(ui.Box.Render(
 			ui.Title.Render("Session logged") + "\n\n" +
 				ui.Bold.Render("Title:       ") + selected + "\n" +
 				ui.Bold.Render("Session:     ") + fmt.Sprintf("%d → %d", updated.PreviousPage, newPage) + "\n" +
-				ui.Bold.Render("Pages read:  ") + ui.Success.Render(fmt.Sprintf("%d", pagesRead)) + "\n" +
+				ui.Bold.Render(unitsLabel) + ui.Success.Render(fmt.Sprintf("%d", unitsRead)) + "\n" +
 				ui.Bold.Render("Progress:    ") + progressBar(newPage, updated.TotalPages),
 		))
 
@@ -443,12 +576,12 @@ var bookReadCmd = &cobra.Command{
 	},
 }
 
-// bookDetailCmd shows a book selector, fetches enriched metadata from Open
-// Library, and renders a combined local + remote detail panel.
+// bookDetailCmd shows an entry selector, fetches enriched metadata from Open
+// Library (books only), and renders a combined local + remote detail panel.
 // The --refresh flag forces a new Open Library search even when cached metadata exists.
 var bookDetailCmd = &cobra.Command{
 	Use:   "dt",
-	Short: "Show detailed information for a book",
+	Short: "Show detailed information for a book or manga",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		refresh, _ := cmd.Flags().GetBool("refresh")
 		useCustomSearch, _ := cmd.Flags().GetBool("search")
@@ -458,7 +591,7 @@ var bookDetailCmd = &cobra.Command{
 		}
 
 		if len(s.Books) == 0 {
-			fmt.Println(ui.Muted.Render("No books yet. Add one with: grim add"))
+			fmt.Println(ui.Muted.Render("No entries yet. Add one with: grim add"))
 			return nil
 		}
 
@@ -471,7 +604,7 @@ var bookDetailCmd = &cobra.Command{
 		selectForm := huh.NewForm(
 			huh.NewGroup(
 				huh.NewSelect[string]().
-					Title("Which book do you want to inspect?").
+					Title("Which entry do you want to inspect?").
 					Options(options...).
 					Value(&selected),
 			),
@@ -518,78 +651,94 @@ var bookDetailCmd = &cobra.Command{
 		}
 
 		session := ui.Muted.Render("—")
-		pagesRead := ui.Muted.Render("—")
+		unitsRead := ui.Muted.Render("—")
 		if book.LastReadDate != "" {
 			session = fmt.Sprintf("%d → %d", book.PreviousPage, book.CurrentPage)
-			pagesRead = ui.Success.Render(fmt.Sprintf("+%d", book.CurrentPage-book.PreviousPage))
+			unitsRead = ui.Success.Render(fmt.Sprintf("+%d", book.CurrentPage-book.PreviousPage))
 		}
 
 		addedAt := book.AddedAt.Format("2006-01-02")
 
-		// Fetch remote metadata from Open Library.
-		// If the work key is already stored, skip the search and only fetch the rating.
-		author := book.Author
-		publishYear := book.PublishYear
-		workKey := book.WorkKey
-
-		query := book.Title
-		if searchTitle != "" {
-			query = searchTitle
+		// Adapt labels based on entry type.
+		detailTitle := "Book Details"
+		positionLabel := "Current page: "
+		unitsReadLabel := "Pages read:   "
+		positionValue := fmt.Sprintf("%d / %d", book.CurrentPage, book.TotalPages)
+		if book.IsMangaComic {
+			detailTitle = "Manga Details"
+			if book.TrackingUnit == "chapter" {
+				positionLabel = "Current ch.:  "
+				unitsReadLabel = "Chapters:     "
+			} else {
+				positionLabel = "Current vol.: "
+				unitsReadLabel = "Volumes:      "
+			}
+			positionValue = fmt.Sprintf("%s%d / %d", mangaComicUnitLabel(book), book.CurrentPage, book.TotalPages)
 		}
 
-		if workKey == "" || refresh || searchTitle != "" {
-			fmt.Print(ui.Muted.Render("Fetching book info from Open Library..."))
-			meta, metaErr := fetchBookMeta(query)
-			fmt.Print("\r\033[K") // clear the loading line
-			if metaErr == nil {
-				workKey = meta.WorkKey
-				author = meta.Author
-				publishYear = meta.PublishYear
-				// Only persist when not using a custom search title.
-				if searchTitle == "" {
-					_ = s.UpdateBookMeta(book.Title, workKey, author, publishYear)
+		// Open Library fetch — skipped for manga entries.
+		var remoteSection string
+		if !book.IsMangaComic {
+			author := book.Author
+			publishYear := book.PublishYear
+			workKey := book.WorkKey
+
+			query := book.Title
+			if searchTitle != "" {
+				query = searchTitle
+			}
+
+			if workKey == "" || refresh || searchTitle != "" {
+				fmt.Print(ui.Muted.Render("Fetching book info from Open Library..."))
+				meta, metaErr := fetchBookMeta(query)
+				fmt.Print("\r\033[K") // clear the loading line
+				if metaErr == nil {
+					workKey = meta.WorkKey
+					author = meta.Author
+					publishYear = meta.PublishYear
+					// Only persist when not using a custom search title.
+					if searchTitle == "" {
+						_ = s.UpdateBookMeta(book.Title, workKey, author, publishYear)
+					}
 				}
 			}
-		}
 
-		// Fetch the rating using the work key (always live, not cached).
-		var ratingAvg float64
-		var ratingCount int
-		if workKey != "" {
-			ratingAvg, ratingCount, _ = fetchRating(workKey)
-		}
-
-		// Build the remote metadata section
-		var remoteSection string
-		if workKey == "" && author == "" {
-			remoteSection = "\n" + ui.Muted.Render("Open Library: no results found") + "\n"
-		} else {
-			publishYearStr := ui.Muted.Render("unknown")
-			if publishYear > 0 {
-				publishYearStr = fmt.Sprintf("%d", publishYear)
-			}
-			authorStr := ui.Muted.Render("unknown")
-			if author != "" {
-				authorStr = author
+			// Fetch the rating using the work key (always live, not cached).
+			var ratingAvg float64
+			var ratingCount int
+			if workKey != "" {
+				ratingAvg, ratingCount, _ = fetchRating(workKey)
 			}
 
-			remoteSection = "\n" +
-				ui.Subtitle.Render("── Open Library ──") + "\n" +
-				ui.Bold.Render("Author:       ") + authorStr + "\n" +
-				ui.Bold.Render("Published:    ") + publishYearStr + "\n" +
-				ui.Bold.Render("Rating:       ") + starRating(ratingAvg, ratingCount) + "\n"
+			if workKey == "" && author == "" {
+				remoteSection = "\n" + ui.Muted.Render("Open Library: no results found") + "\n"
+			} else {
+				publishYearStr := ui.Muted.Render("unknown")
+				if publishYear > 0 {
+					publishYearStr = fmt.Sprintf("%d", publishYear)
+				}
+				authorStr := ui.Muted.Render("unknown")
+				if author != "" {
+					authorStr = author
+				}
+				remoteSection = "\n" +
+					ui.Subtitle.Render("── Open Library ──") + "\n" +
+					ui.Bold.Render("Author:       ") + authorStr + "\n" +
+					ui.Bold.Render("Published:    ") + publishYearStr + "\n" +
+					ui.Bold.Render("Rating:       ") + starRating(ratingAvg, ratingCount) + "\n"
+			}
 		}
 
 		fmt.Println(ui.Box.Render(
-			ui.Title.Render("Book Details")+"\n\n"+
-				ui.Bold.Render("Title:        ")+book.Title+"\n"+
-				ui.Bold.Render("Current page: ")+fmt.Sprintf("%d / %d", book.CurrentPage, book.TotalPages)+"\n"+
-				ui.Bold.Render("Progress:     ")+progressBar(book.CurrentPage, book.TotalPages)+"\n"+
-				ui.Bold.Render("Last session: ")+session+"\n"+
-				ui.Bold.Render("Pages read:   ")+pagesRead+"\n"+
-				ui.Bold.Render("Last read:    ")+lastRead+"\n"+
-				ui.Bold.Render("Added on:     ")+addedAt+"\n"+
-				ui.Bold.Render("Read today:   ")+readStatus+
+			ui.Title.Render(detailTitle) + "\n\n" +
+				ui.Bold.Render("Title:        ") + book.Title + "\n" +
+				ui.Bold.Render(positionLabel) + positionValue + "\n" +
+				ui.Bold.Render("Progress:     ") + progressBar(book.CurrentPage, book.TotalPages) + "\n" +
+				ui.Bold.Render("Last session: ") + session + "\n" +
+				ui.Bold.Render(unitsReadLabel) + unitsRead + "\n" +
+				ui.Bold.Render("Last read:    ") + lastRead + "\n" +
+				ui.Bold.Render("Added on:     ") + addedAt + "\n" +
+				ui.Bold.Render("Read today:   ") + readStatus +
 				remoteSection,
 		))
 
@@ -597,12 +746,13 @@ var bookDetailCmd = &cobra.Command{
 	},
 }
 
-// bookModifyCmd lets the user update the title or total page count of a book.
-// It presents a book selector, a field selector, and then prompts for the new value.
+// bookModifyCmd lets the user update the title or total count of an entry.
+// It presents an entry selector, a field selector, and then prompts for the new value.
+// The field options are adapted based on whether the entry is a book or manga.
 var bookModifyCmd = &cobra.Command{
 	Use:     "modified",
 	Aliases: []string{"mod"},
-	Short:   "Update the title or total pages of a book",
+	Short:   "Update the title or total count of a book or manga",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := store.New()
 		if err != nil {
@@ -610,7 +760,7 @@ var bookModifyCmd = &cobra.Command{
 		}
 
 		if len(s.Books) == 0 {
-			fmt.Println(ui.Muted.Render("No books yet. Add one with: grim add"))
+			fmt.Println(ui.Muted.Render("No entries yet. Add one with: grim add"))
 			return nil
 		}
 
@@ -619,25 +769,52 @@ var bookModifyCmd = &cobra.Command{
 			options[i] = huh.NewOption(b.Title, b.Title)
 		}
 
-		var selected, field string
-
+		var selected string
 		selectForm := huh.NewForm(
 			huh.NewGroup(
 				huh.NewSelect[string]().
-					Title("Which book do you want to modify?").
+					Title("Which entry do you want to modify?").
 					Options(options...).
 					Value(&selected),
+			),
+		)
+
+		if err := selectForm.Run(); err != nil {
+			return err
+		}
+
+		// Find the selected entry to set context-aware labels.
+		var entry store.Book
+		for _, b := range s.Books {
+			if b.Title == selected {
+				entry = b
+				break
+			}
+		}
+
+		totalLabel := "Total pages"
+		if entry.IsMangaComic {
+			if entry.TrackingUnit == "chapter" {
+				totalLabel = "Total chapters"
+			} else {
+				totalLabel = "Total volumes"
+			}
+		}
+
+		var field string
+		fieldForm := huh.NewForm(
+			huh.NewGroup(
 				huh.NewSelect[string]().
 					Title("What do you want to change?").
 					Options(
 						huh.NewOption("Title", "title"),
-						huh.NewOption("Total pages", "pages"),
+						huh.NewOption(totalLabel, "total"),
 					).
 					Value(&field),
 			),
 		)
 
-		if err := selectForm.Run(); err != nil {
+		if err := fieldForm.Run(); err != nil {
 			return err
 		}
 
@@ -662,7 +839,7 @@ var bookModifyCmd = &cobra.Command{
 			}
 
 			fmt.Println(ui.Box.Render(
-				ui.Title.Render("Book updated") + "\n\n" +
+				ui.Title.Render("Entry updated") + "\n\n" +
 					ui.Bold.Render("Old title: ") + selected + "\n" +
 					ui.Bold.Render("New title: ") + newTitle,
 			))
@@ -670,13 +847,13 @@ var bookModifyCmd = &cobra.Command{
 			return nil
 		}
 
-		// field == "pages"
-		var totalPagesStr string
+		// field == "total"
+		var totalStr string
 
-		pageForm := huh.NewForm(
+		totalForm := huh.NewForm(
 			huh.NewGroup(
 				huh.NewInput().
-					Title("New total pages").
+					Title(fmt.Sprintf("New %s", strings.ToLower(totalLabel))).
 					Placeholder("350").
 					Validate(func(s string) error {
 						if _, err := strconv.Atoi(s); err != nil {
@@ -684,24 +861,24 @@ var bookModifyCmd = &cobra.Command{
 						}
 						return nil
 					}).
-					Value(&totalPagesStr),
+					Value(&totalStr),
 			),
 		)
 
-		if err := pageForm.Run(); err != nil {
+		if err := totalForm.Run(); err != nil {
 			return err
 		}
 
-		totalPages, _ := strconv.Atoi(totalPagesStr)
+		total, _ := strconv.Atoi(totalStr)
 
-		if err := s.UpdateTotalPages(selected, totalPages); err != nil {
+		if err := s.UpdateTotalPages(selected, total); err != nil {
 			return err
 		}
 
 		fmt.Println(ui.Box.Render(
-			ui.Title.Render("Book updated") + "\n\n" +
-				ui.Bold.Render("Title:       ") + selected + "\n" +
-				ui.Bold.Render("Total pages: ") + fmt.Sprintf("%d", totalPages),
+			ui.Title.Render("Entry updated") + "\n\n" +
+				ui.Bold.Render("Title:        ") + selected + "\n" +
+				ui.Bold.Render(totalLabel+": ") + fmt.Sprintf("%d", total),
 		))
 
 		return nil
