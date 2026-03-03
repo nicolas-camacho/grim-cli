@@ -8,6 +8,7 @@ A terminal reading tracker built with Go and the [Charm](https://charm.sh) suite
 - Books are tracked by pages; manga/comics are tracked by volume or chapter
 - List all entries in a styled table with a live reading progress bar
 - Log reading sessions and mark entries as completed
+- View the full reading session history for any entry
 - View detailed information for a book, enriched with author, publish year, and rating from Open Library
 - Edit an entry's title or total count interactively
 - Delete entries interactively
@@ -85,6 +86,22 @@ Most commands have a short alias:
 | `grim ls` | `grim list` |
 | `grim rd` | `grim read` |
 | `grim mod` | `grim modified` |
+
+### View session history
+
+Shows the full reading session log for a selected entry. Only entries with at least one session logged appear in the selector.
+
+```bash
+grim log
+```
+
+| Column | Description |
+|---|---|
+| Date | Date the session was logged |
+| Session | Position range covered in that session (e.g. `120 → 180`) |
+| Pages Read / Volumes Read / Chapters Read | Units read in that session |
+
+Sessions are displayed from most recent to oldest.
 
 ### Add an entry
 
@@ -284,6 +301,7 @@ grim-cli/
 ├── cmd/
 │   ├── root.go      # Root Cobra command and Execute() function
 │   ├── book.go        # add, list, del, read, dt, and modified commands
+│   ├── log.go         # log command
 │   ├── openlibrary.go # Open Library API client
 │   └── version.go     # version command
 ├── store/

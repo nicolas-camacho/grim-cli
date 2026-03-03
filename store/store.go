@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+// ReadingSession records a single reading session for an entry.
+type ReadingSession struct {
+	Date string `json:"date"` // format: "2006-01-02"
+	From int    `json:"from"`
+	To   int    `json:"to"`
+}
+
 // Book represents a single entry in the reading list.
 // It handles both books (tracked by pages) and manga (tracked by volumes or chapters).
 type Book struct {
@@ -30,6 +37,9 @@ type Book struct {
 	WorkKey     string `json:"work_key,omitempty"` // e.g. "/works/OL45804W"
 	Author      string `json:"author,omitempty"`
 	PublishYear int    `json:"publish_year,omitempty"`
+
+	// Session history — appended on every read log.
+	Sessions []ReadingSession `json:"sessions,omitempty"`
 }
 
 // WasReadToday returns true if the book's LastReadDate matches today's date.
@@ -94,9 +104,12 @@ func (s *Store) save() error {
 // PreviousPage is always initialised to 0 on creation.
 // LastReadDate is set to today only when readToday is true.
 func (s *Store) AddBook(title string, page, totalPages int, readToday bool) error {
+	today := time.Now().Format("2006-01-02")
 	lastReadDate := ""
+	var sessions []ReadingSession
 	if readToday {
-		lastReadDate = time.Now().Format("2006-01-02")
+		lastReadDate = today
+		sessions = []ReadingSession{{Date: today, From: 0, To: page}}
 	}
 	s.Books = append(s.Books, Book{
 		Title:        title,
@@ -106,6 +119,7 @@ func (s *Store) AddBook(title string, page, totalPages int, readToday bool) erro
 		ReadToday:    readToday,
 		LastReadDate: lastReadDate,
 		AddedAt:      time.Now(),
+		Sessions:     sessions,
 	})
 	return s.save()
 }
@@ -113,9 +127,12 @@ func (s *Store) AddBook(title string, page, totalPages int, readToday bool) erro
 // AddManga appends a new manga to the list and persists the change.
 // trackingUnit must be "volume" or "chapter".
 func (s *Store) AddMangaComic(title, trackingUnit string, current, total int, readToday bool) error {
+	today := time.Now().Format("2006-01-02")
 	lastReadDate := ""
+	var sessions []ReadingSession
 	if readToday {
-		lastReadDate = time.Now().Format("2006-01-02")
+		lastReadDate = today
+		sessions = []ReadingSession{{Date: today, From: 0, To: current}}
 	}
 	s.Books = append(s.Books, Book{
 		Title:        title,
@@ -127,6 +144,7 @@ func (s *Store) AddMangaComic(title, trackingUnit string, current, total int, re
 		AddedAt:      time.Now(),
 		IsMangaComic: true,
 		TrackingUnit: trackingUnit,
+		Sessions:     sessions,
 	})
 	return s.save()
 }
@@ -134,12 +152,18 @@ func (s *Store) AddMangaComic(title, trackingUnit string, current, total int, re
 // UpdateBook marks a book as read today, shifting CurrentPage to PreviousPage
 // and setting the new page as CurrentPage. LastReadDate is set to today.
 func (s *Store) UpdateBook(title string, newPage int) error {
+	today := time.Now().Format("2006-01-02")
 	for i, b := range s.Books {
 		if b.Title == title {
 			s.Books[i].PreviousPage = b.CurrentPage
 			s.Books[i].CurrentPage = newPage
-			s.Books[i].LastReadDate = time.Now().Format("2006-01-02")
+			s.Books[i].LastReadDate = today
 			s.Books[i].ReadToday = true
+			s.Books[i].Sessions = append(s.Books[i].Sessions, ReadingSession{
+				Date: today,
+				From: b.CurrentPage,
+				To:   newPage,
+			})
 			return s.save()
 		}
 	}
@@ -149,13 +173,19 @@ func (s *Store) UpdateBook(title string, newPage int) error {
 // CompleteBook marks a book as finished: sets CurrentPage to TotalPages,
 // records today as the last read date, and flags it as completed.
 func (s *Store) CompleteBook(title string) error {
+	today := time.Now().Format("2006-01-02")
 	for i, b := range s.Books {
 		if b.Title == title {
 			s.Books[i].PreviousPage = b.CurrentPage
 			s.Books[i].CurrentPage = b.TotalPages
-			s.Books[i].LastReadDate = time.Now().Format("2006-01-02")
+			s.Books[i].LastReadDate = today
 			s.Books[i].ReadToday = true
 			s.Books[i].Completed = true
+			s.Books[i].Sessions = append(s.Books[i].Sessions, ReadingSession{
+				Date: today,
+				From: b.CurrentPage,
+				To:   b.TotalPages,
+			})
 			return s.save()
 		}
 	}
